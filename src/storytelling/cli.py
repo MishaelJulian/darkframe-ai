@@ -19,6 +19,15 @@ from storytelling.image_gen import (
 )
 from storytelling.logging_utils import configure_logging
 from storytelling.models import EpisodeRecord, StoryRecord
+from storytelling.subtitles import write_episode_subtitles
+from storytelling.video_prod import (
+    CameraMotionType,
+    LayerRole,
+    SceneLayer,
+    SceneRenderSpec,
+    VideoAssembler,
+)
+from storytelling.voiceover import NarrationSegmentInput, VoiceoverGenerator
 
 
 def run_doctor(settings: Settings) -> dict[str, object]:
@@ -112,6 +121,37 @@ def build_parser() -> argparse.ArgumentParser:
     gen_p.add_argument("--license-id", type=str, default="other")
     gen_p.add_argument("--db-path", type=Path, default=None)
     gen_p.add_argument("--output-dir", type=Path, default=None)
+
+    vid_parser = subparsers.add_parser(
+        "video", help="Local FFmpeg 1080x1920 vertical video production"
+    )
+    vid_sub = vid_parser.add_subparsers(dest="video_command", required=True)
+
+    poc_p = vid_sub.add_parser(
+        "render-poc",
+        help="Render the 15-second 1080x1920 proof-of-concept video from two DARK_CINEMATIC_2D scenes",
+    )
+    poc_p.add_argument("--episode-id", type=str, default="ep_m3_poc")
+    poc_p.add_argument(
+        "--scene0-image",
+        type=Path,
+        default=Path(
+            "output/ep_dark_cinematic_2d/images/scene_00_DARK_CINEMATIC_2D_512x896_seed_19001215.png"
+        ),
+    )
+    poc_p.add_argument(
+        "--scene1-image",
+        type=Path,
+        default=Path(
+            "output/ep_dark_cinematic_2d/images/scene_01_DARK_CINEMATIC_2D_512x896_seed_19001226.png"
+        ),
+    )
+    poc_p.add_argument("--upscale-factor", type=int, choices=[1, 2], default=1)
+    poc_p.add_argument(
+        "--output-filename", type=str, default="poc_1080x1920_upscale1x.mp4"
+    )
+    poc_p.add_argument("--db-path", type=Path, default=None)
+    poc_p.add_argument("--output-dir", type=Path, default=None)
 
     return parser
 
@@ -247,4 +287,130 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(result.model_dump_json(indent=2))
             return 0
 
+    if args.command == "video":
+        if args.video_command == "render-poc":
+            db_path = args.db_path or settings.db_path
+            out_root = args.output_dir or settings.output_dir
+            db = DatabaseManager(db_path=db_path)
+            db.apply_migrations()
+
+            story_id = f"story_for_{args.episode_id}"
+            db.upsert_story(
+                StoryRecord(
+                    story_id=story_id,
+                    title="Flannan Isles Lighthouse Disappearance (December 1900 PoC)",
+                    event_key=f"flannan-isles-1900-{args.episode_id}",
+                )
+            )
+            db.upsert_episode(
+                EpisodeRecord(
+                    episode_id=args.episode_id,
+                    story_id=story_id,
+                    series_index=1,
+                    title="Eilean Mor: The Silent Lamp (M3 Proof of Concept)",
+                )
+            )
+
+            segments_in = [
+                NarrationSegmentInput(
+                    scene_index=0,
+                    text=(
+                        "In December nineteen hundred, the relief vessel Hesperus reached "
+                        "the isolated lighthouse on Eilean Mor in the Outer Hebrides."
+                    ),
+                    pause_after_sec=0.45,
+                    claim_ids=["claim_flannan_1900_hesperus_arrival"],
+                ),
+                NarrationSegmentInput(
+                    scene_index=1,
+                    text=(
+                        "All three keepers—James Ducat, Thomas Marshall, and Donald McArthur—"
+                        "had vanished into the Atlantic storm, leaving the station locked and silent."
+                    ),
+                    pause_after_sec=0.55,
+                    claim_ids=["claim_flannan_1900_three_keepers_missing"],
+                ),
+            ]
+
+            vo_gen = VoiceoverGenerator(settings=settings, db=db)
+            vo_result = vo_gen.generate_episode_voiceover(
+                episode_id=args.episode_id,
+                segments=segments_in,
+                output_dir=out_root,
+                min_total_duration_sec=15.0,
+            )
+
+            ass_path, cues = write_episode_subtitles(
+                episode_id=args.episode_id,
+                segments=vo_result.segments,
+                output_dir=out_root,
+                db=db,
+            )
+
+            transition_sec = 0.5
+            seg0 = vo_result.segments[0]
+            seg1 = vo_result.segments[1]
+            scene0_dur = round(seg0.total_duration_sec + (transition_sec / 2.0), 3)
+            scene1_dur = round(
+                max(
+                    1.0,
+                    vo_result.total_duration_sec - seg0.total_duration_sec + (transition_sec / 2.0),
+                ),
+                3,
+            )
+
+            scenes = [
+                SceneRenderSpec(
+                    scene_index=0,
+                    duration_sec=scene0_dur,
+                    camera_motion=CameraMotionType.SLOW_PUSH_IN,
+                    layers=[
+                        SceneLayer(
+                            layer_id="scene0_main",
+                            role=LayerRole.COMPOSITE,
+                            image_path=args.scene0_image,
+                            z_index=0,
+                        )
+                    ],
+                ),
+                SceneRenderSpec(
+                    scene_index=1,
+                    duration_sec=scene1_dur,
+                    camera_motion=CameraMotionType.PAN_UP_REVEAL,
+                    layers=[
+                        SceneLayer(
+                            layer_id="scene1_main",
+                            role=LayerRole.COMPOSITE,
+                            image_path=args.scene1_image,
+                            z_index=0,
+                        )
+                    ],
+                ),
+            ]
+
+            assembler = VideoAssembler(settings=settings, db=db)
+            render_result = assembler.render_episode(
+                episode_id=args.episode_id,
+                scenes=scenes,
+                narration_wav=vo_result.audio_path,
+                subtitle_ass=ass_path,
+                output_filename=args.output_filename,
+                transition_sec=transition_sec,
+                upscale_factor=args.upscale_factor,
+                output_dir=out_root,
+            )
+
+            summary = {
+                "voiceover": json.loads(vo_result.model_dump_json()),
+                "subtitle_ass_path": str(ass_path),
+                "subtitle_cue_count": len(cues),
+                "video": json.loads(render_result.model_dump_json()),
+            }
+            print(json.dumps(summary, indent=2))
+            return 0
+
     return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
