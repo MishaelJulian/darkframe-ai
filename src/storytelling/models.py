@@ -222,3 +222,24 @@ class JobRecord(BaseModel):
     last_error: str | None = None
     created_at: str = Field(default_factory=utc_now_iso)
     updated_at: str = Field(default_factory=utc_now_iso)
+
+
+class AssetRecord(BaseModel):
+    """Typed contract for a generated or sourced media asset (specs/11-DATABASE.md)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: str
+    episode_id: str
+    scene_id: str | None = None
+    asset_type: AssetType
+    file_path: str
+    sha256_checksum: str
+    byte_size: int = Field(ge=0)
+    model_name: str | None = None
+    model_version: str | None = None
+    license_id: str
+    rights_provenance: str
+    metadata_json: dict[str, Any] | None = None
+    created_at: str = Field(default_factory=utc_now_iso)
+

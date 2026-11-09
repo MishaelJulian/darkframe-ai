@@ -6,7 +6,7 @@
 Work in vertical slices and ask for approval before heavy downloads, installs, paid calls or publishing.
 
 ## Detailed requirements
-M0 inspect machine and ComfyUI API; M1 create repo/config/SQLite/tests; M2 local image proof; M3 voice + FFmpeg proof; M4 research and claim evidence; M5 story engine; M6 full single episode; M7 four-episode continuity; M8 scheduling; M9 publishing adapter.
+M0 inspect machine and ComfyUI API; M1 create repo/config/SQLite/tests; M2 local image generation (ComfyUI API client, 512x768 dark 2D workflow, OOM fallback, asset persistence, and local checkpoint proof); M3 voice + FFmpeg proof; M4 story discovery, research and claim evidence; M5 original storytelling engine; M6 full single episode with QC; M7 four-episode continuity; M8 scheduling and job orchestration; M9 publishing adapter.
 
 ## Implementation contract
 - Implement typed Python modules with clear public interfaces and JSON schemas.

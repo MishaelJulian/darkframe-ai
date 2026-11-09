@@ -11,7 +11,14 @@ from typing import Sequence
 
 from storytelling.config import Settings, load_settings
 from storytelling.db import REQUIRED_TABLES, DatabaseManager
+from storytelling.image_gen import (
+    ComfyUIError,
+    ComfyUIClient,
+    ImageGenerationRequest,
+    LocalImageGenerator,
+)
 from storytelling.logging_utils import configure_logging
+from storytelling.models import EpisodeRecord, StoryRecord
 
 
 def run_doctor(settings: Settings) -> dict[str, object]:
@@ -71,6 +78,30 @@ def build_parser() -> argparse.ArgumentParser:
     restore_p = db_sub.add_parser("restore", help="Restore SQLite database from backup")
     restore_p.add_argument("--db-path", type=Path, default=None)
     restore_p.add_argument("--input", type=Path, required=True)
+
+    img_parser = subparsers.add_parser(
+        "image", help="Local ComfyUI dark 2D image generation"
+    )
+    img_sub = img_parser.add_subparsers(dest="image_command", required=True)
+
+    img_sub.add_parser(
+        "check", help="Check local ComfyUI HTTP API status and installed checkpoints"
+    )
+
+    gen_p = img_sub.add_parser(
+        "generate", help="Generate a dark 2D vertical scene illustration via ComfyUI"
+    )
+    gen_p.add_argument("--prompt", type=str, required=True)
+    gen_p.add_argument("--episode-id", type=str, default="ep_m2_proof")
+    gen_p.add_argument("--scene-index", type=int, default=0)
+    gen_p.add_argument("--seed", type=int, default=42)
+    gen_p.add_argument("--width", type=int, default=512)
+    gen_p.add_argument("--height", type=int, default=768)
+    gen_p.add_argument("--steps", type=int, default=24)
+    gen_p.add_argument("--checkpoint", type=str, default=None)
+    gen_p.add_argument("--license-id", type=str, default="creativeml-openrail-m")
+    gen_p.add_argument("--db-path", type=Path, default=None)
+    gen_p.add_argument("--output-dir", type=Path, default=None)
 
     return parser
 
@@ -132,6 +163,73 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.db_command == "restore":
             restored = db.restore_from(args.input)
             print(json.dumps({"restored_to": str(restored)}, indent=2))
+            return 0
+
+    if args.command == "image":
+        client = ComfyUIClient(settings=settings)
+        if args.image_command == "check":
+            try:
+                base_url = client.detect_base_url()
+                checkpoints = client.list_checkpoints()
+                print(
+                    json.dumps(
+                        {
+                            "comfyui_reachable": True,
+                            "base_url": base_url,
+                            "checkpoints": checkpoints,
+                        },
+                        indent=2,
+                    )
+                )
+                return 0
+            except ComfyUIError as exc:
+                print(
+                    json.dumps(
+                        {
+                            "comfyui_reachable": False,
+                            "error": str(exc),
+                        },
+                        indent=2,
+                    )
+                )
+                return 1
+
+        if args.image_command == "generate":
+            db_path = args.db_path or settings.db_path
+            db = DatabaseManager(db_path=db_path)
+            db.apply_migrations()
+            story_id = f"story_for_{args.episode_id}"
+            db.upsert_story(
+                StoryRecord(
+                    story_id=story_id,
+                    title=f"Story for {args.episode_id}",
+                    event_key=f"event-{args.episode_id}",
+                )
+            )
+            db.upsert_episode(
+                EpisodeRecord(
+                    episode_id=args.episode_id,
+                    story_id=story_id,
+                    series_index=1,
+                    title=f"Episode {args.episode_id}",
+                )
+            )
+            generator = LocalImageGenerator(settings=settings, db=db, client=client)
+            req = ImageGenerationRequest(
+                episode_id=args.episode_id,
+                scene_index=args.scene_index,
+                visual_prompt=args.prompt,
+                checkpoint_name=args.checkpoint,
+                license_id=args.license_id,
+                seed=args.seed,
+                width=args.width,
+                height=args.height,
+                steps=args.steps,
+            )
+            result = generator.generate_scene_image(
+                req, output_dir=args.output_dir
+            )
+            print(result.model_dump_json(indent=2))
             return 0
 
     return 1

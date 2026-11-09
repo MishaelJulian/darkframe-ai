@@ -68,3 +68,20 @@ def test_cli_db_lifecycle(
     )
     capsys.readouterr()
     assert restored_file.exists()
+
+
+def test_cli_image_check_handles_unreachable_gracefully(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from storytelling.image_gen import ComfyUIClient, ComfyUnavailableError
+
+    def mock_detect(self: ComfyUIClient) -> str:
+        raise ComfyUnavailableError("Local ComfyUI HTTP API is unreachable.")
+
+    monkeypatch.setattr(ComfyUIClient, "detect_base_url", mock_detect)
+    rc = main(["image", "check"])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["comfyui_reachable"] is False
+    assert "unreachable" in out["error"]
+

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 from storytelling.models import (
+    AssetRecord,
+    AssetType,
     EpisodeRecord,
     JobRecord,
     JobStatus,
@@ -343,3 +346,120 @@ class DatabaseManager:
         return self.register_job(
             JobRecord(job_id=row["job_id"], job_key=job_key, stage=row["stage"])
         )
+
+    def complete_job(self, job_key: str, gpu_seconds: float = 0.0) -> JobRecord:
+        """Mark a running job as SUCCEEDED and release its GPU lock."""
+        now = utc_now_iso()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM jobs WHERE job_key = ?;", (job_key,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Job not found for key: {job_key}")
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'SUCCEEDED',
+                    gpu_seconds = gpu_seconds + ?,
+                    last_error = NULL,
+                    updated_at = ?
+                WHERE job_key = ?;
+                """,
+                (max(0.0, gpu_seconds), now, job_key),
+            )
+        return self.register_job(
+            JobRecord(job_id=row["job_id"], job_key=job_key, stage=row["stage"])
+        )
+
+    def fail_job(
+        self, job_key: str, error_message: str, gpu_seconds: float = 0.0
+    ) -> JobRecord:
+        """Mark a running job as FAILED, record error details, and release its GPU lock."""
+        now = utc_now_iso()
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM jobs WHERE job_key = ?;", (job_key,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Job not found for key: {job_key}")
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'FAILED',
+                    gpu_seconds = gpu_seconds + ?,
+                    last_error = ?,
+                    updated_at = ?
+                WHERE job_key = ?;
+                """,
+                (max(0.0, gpu_seconds), error_message, now, job_key),
+            )
+        return self.register_job(
+            JobRecord(job_id=row["job_id"], job_key=job_key, stage=row["stage"])
+        )
+
+    def record_asset(self, asset: AssetRecord) -> AssetRecord:
+        """Insert or replace an asset record in SQLite."""
+        metadata_str = (
+            json.dumps(asset.metadata_json, ensure_ascii=False)
+            if asset.metadata_json is not None
+            else None
+        )
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO assets (
+                    asset_id, episode_id, scene_id, asset_type, file_path,
+                    sha256_checksum, byte_size, model_name, model_version,
+                    license_id, rights_provenance, metadata_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    asset.asset_id,
+                    asset.episode_id,
+                    asset.scene_id,
+                    asset.asset_type.value,
+                    asset.file_path,
+                    asset.sha256_checksum,
+                    asset.byte_size,
+                    asset.model_name,
+                    asset.model_version,
+                    asset.license_id,
+                    asset.rights_provenance,
+                    metadata_str,
+                    asset.created_at,
+                ),
+            )
+        return asset
+
+    def list_assets(self, episode_id: str) -> list[AssetRecord]:
+        """Return all assets registered for an episode."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM assets WHERE episode_id = ? ORDER BY created_at;",
+                (episode_id,),
+            ).fetchall()
+            results: list[AssetRecord] = []
+            for r in rows:
+                results.append(
+                    AssetRecord(
+                        asset_id=r["asset_id"],
+                        episode_id=r["episode_id"],
+                        scene_id=r["scene_id"],
+                        asset_type=AssetType(r["asset_type"]),
+                        file_path=r["file_path"],
+                        sha256_checksum=r["sha256_checksum"],
+                        byte_size=int(r["byte_size"]),
+                        model_name=r["model_name"],
+                        model_version=r["model_version"],
+                        license_id=r["license_id"],
+                        rights_provenance=r["rights_provenance"],
+                        metadata_json=(
+                            json.loads(r["metadata_json"])
+                            if r["metadata_json"]
+                            else None
+                        ),
+                        created_at=r["created_at"],
+                    )
+                )
+            return results
+
