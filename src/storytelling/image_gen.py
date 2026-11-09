@@ -40,14 +40,15 @@ STYLE_PRESETS: dict[StylePresetChoice, DarkStylePresetConfig] = {
     StylePresetChoice.INKED_GRAPHIC_NOVEL: DarkStylePresetConfig(
         preset_id=StylePresetChoice.INKED_GRAPHIC_NOVEL,
         positive_prefix=(
-            "(2d graphic novel illustration:1.25), (bold black ink outlines, strong cel shading:1.2), "
-            "comic book ink linework, limited muted color palette, simplified geometric shapes, "
-            "dramatic comic-book chiaroscuro shadows, flat color fills"
+            "(2d graphic novel illustration:1.25), (bold black ink outlines, strong cel shading:1.25), "
+            "dark comic book art, limited muted slate and amber color palette, simplified geometric shapes, "
+            "heavy chiaroscuro ink shadows, flat color fills, full bleed edge-to-edge vertical scene"
         ),
-        positive_suffix="hand-inked 2d comic panel, non-photorealistic, original 2d illustration",
+        positive_suffix="hand-inked 2d graphic novel art, non-photorealistic, dark moody lighting",
         negative_prompt=(
             "photorealistic, photograph, photo, 3d render, cgi, unreal engine, octane render, "
-            "camera lens, depth of field, bokeh, soft airbrush, smooth 3d shading, bright neon, "
+            "white border, paper border, page margin, picture frame, canvas border, "
+            "camera lens, depth of field, bokeh, soft airbrush, smooth 3d shading, bright daylight, "
             "oversaturated, watermark, text, logo, signature, blurry, low quality, deformed hands, "
             "extra limbs, cropped"
         ),
@@ -55,30 +56,33 @@ STYLE_PRESETS: dict[StylePresetChoice, DarkStylePresetConfig] = {
     StylePresetChoice.ILLUSTRATED_NOIR: DarkStylePresetConfig(
         preset_id=StylePresetChoice.ILLUSTRATED_NOIR,
         positive_prefix=(
-            "(hand-drawn noir illustration:1.25), (textured ink and charcoal shadows:1.2), "
-            "stylized mystery book illustration, muted slate teal and amber palette, "
-            "stylized hand-painted background, visible pen and crosshatching strokes, "
-            "cinematic noir composition"
+            "(hand-drawn dark noir illustration:1.25), (textured ink crosshatching and deep shadows:1.2), "
+            "stylized mystery illustration, muted slate-teal and warm amber color palette, "
+            "stylized hand-painted dark background, visible pen strokes, cinematic noir lighting, "
+            "full bleed edge-to-edge vertical scene"
         ),
-        positive_suffix="stylized 2d noir artwork, non-photorealistic, original hand-drawn illustration",
+        positive_suffix="stylized 2d color noir artwork, non-photorealistic, original hand-drawn illustration",
         negative_prompt=(
             "photorealistic, photograph, raw photo, dslr, 3d render, cgi, glossy plastic, "
-            "anime, bright neon, oversaturated, watermark, text, logo, signature, blurry, "
+            "white border, paper margin, vignette border, parchment edge, monochrome, grayscale, "
+            "bright daylight, watermark, text, logo, signature, handwriting, blurry, "
             "low quality, deformed hands, extra limbs, cropped"
         ),
     ),
     StylePresetChoice.DARK_2D_ANIMATION: DarkStylePresetConfig(
         preset_id=StylePresetChoice.DARK_2D_ANIMATION,
         positive_prefix=(
-            "(flat-shaded 2d animated film frame:1.25), (2d hand-drawn animation cel:1.2), "
-            "simplified stylized shapes, clear dark silhouettes, clean 2d linework, "
-            "atmospheric rim lighting, matte painted 2d background, dark animated thriller aesthetic"
+            "(dark 2d cel-shaded animation:1.25), (flat-shaded 2d animated thriller frame:1.25), "
+            "clean 2d ink linework, simplified stylized shapes, clear dark silhouettes, "
+            "moody midnight shadows, warm lantern rim light, matte painted 2d animation background, "
+            "full bleed edge-to-edge vertical scene"
         ),
-        positive_suffix="2d animation cel shading, non-photorealistic, original 2d animated art",
+        positive_suffix="2d animated film cel art, flat 2d shading, non-photorealistic, dark atmosphere",
         negative_prompt=(
-            "photorealistic, photograph, live action, 3d render, cgi, pixar, blender, "
-            "oil painting impastos, heavy sketch crosshatching, bright neon, watermark, "
-            "text, logo, signature, blurry, low quality, deformed hands, extra limbs, cropped"
+            "photorealistic, photograph, live action, 3d render, cgi, blender, octane render, "
+            "bright daylight, sunny room, white border, paper border, oil painting impastos, "
+            "heavy sketch crosshatching, bright neon, watermark, text, logo, signature, blurry, "
+            "low quality, deformed hands, extra limbs, cropped"
         ),
     ),
 }
