@@ -51,30 +51,43 @@ def _prepare_db_with_episode(tmp_path: Path, episode_id: str = "ep_01") -> Datab
     return db
 
 
-def test_workflow_builder_uses_512x768_batch1_and_dark_style() -> None:
+def test_workflow_builder_uses_512x896_batch1_and_dark_cinematic_style() -> None:
     wf = build_sd15_txt2img_workflow(
         checkpoint_name="DreamShaper_8_pruned.safetensors",
         positive_prompt="A lone lantern on a wet stone pier at midnight",
-        style_preset=StylePresetChoice.INKED_GRAPHIC_NOVEL,
         seed=101,
     )
     assert wf["4"]["inputs"]["ckpt_name"] == "DreamShaper_8_pruned.safetensors"
     assert wf["5"]["inputs"]["width"] == 512
-    assert wf["5"]["inputs"]["height"] == 768
+    assert wf["5"]["inputs"]["height"] == 896
     assert wf["5"]["inputs"]["batch_size"] == 1
     assert wf["3"]["inputs"]["seed"] == 101
     pos_text = wf["6"]["inputs"]["text"]
-    assert pos_text.startswith("(2d graphic novel illustration:1.25)")
+    assert pos_text.startswith("(dark 2d graphic novel animation:1.25)")
     assert "A lone lantern on a wet stone pier at midnight" in pos_text
 
 
-def test_all_three_style_presets_place_tokens_at_beginning() -> None:
-    scene = "An overturned chair in a lighthouse dining room"
+def test_all_four_style_presets_and_narrative_priority() -> None:
+    assert len(StylePresetChoice) == 4
+    scene = "rain streaking the narrow window pane"
     for preset in StylePresetChoice:
-        composed = compose_dark_2d_prompt(scene, style_preset=preset)
+        composed = compose_dark_2d_prompt(
+            scene,
+            style_preset=preset,
+            primary_subject="overturned wooden chair on the floor",
+            setting="Victorian lighthouse dining room",
+            time_of_day="stormy midnight",
+            key_objects=["untouched meal on plate", "glowing brass oil lantern"],
+        )
         expected_prefix = STYLE_PRESETS[preset].positive_prefix
+        expected_suffix = STYLE_PRESETS[preset].positive_suffix
         assert composed.startswith(expected_prefix)
-        assert scene in composed
+        assert composed.endswith(expected_suffix)
+        # Verify narrative objects appear BEFORE the decorative suffix
+        assert composed.index("overturned wooden chair") < composed.index(expected_suffix)
+        assert composed.index("untouched meal on plate") < composed.index(expected_suffix)
+        assert composed.index("glowing brass oil lantern") < composed.index(expected_suffix)
+
 
 
 
@@ -231,7 +244,7 @@ def test_successful_image_generation_and_sqlite_persistence(tmp_path: Path) -> N
     )
 
     assert result.width == 512
-    assert result.height == 768
+    assert result.height == 896
     assert result.oom_recovered is False
     assert result.image_path.exists()
     assert result.manifest_path.exists()
@@ -270,7 +283,7 @@ def test_cuda_oom_triggers_vram_free_and_resolution_step_down(tmp_path: Path) ->
             latent = body["prompt"]["5"]["inputs"]
             w, h = int(latent["width"]), int(latent["height"])
             submitted_resolutions.append((w, h))
-            if (w, h) == (512, 768):
+            if (w, h) == (512, 896):
                 return httpx.Response(200, json={"prompt_id": "pid_oom"})
             return httpx.Response(200, json={"prompt_id": "pid_ok"})
         if request.url.path == "/history/pid_oom":
@@ -331,8 +344,8 @@ def test_cuda_oom_triggers_vram_free_and_resolution_step_down(tmp_path: Path) ->
         )
     )
     assert free_called is True
-    assert submitted_resolutions == [(512, 768), (448, 672)]
-    assert (result.width, result.height) == (448, 672)
+    assert submitted_resolutions == [(512, 896), (512, 768)]
+    assert (result.width, result.height) == (512, 768)
     assert result.oom_recovered is True
 
 

@@ -17,8 +17,9 @@ from storytelling.config import Settings, StylePresetChoice
 from storytelling.db import DatabaseManager
 from storytelling.models import AssetRecord, AssetType, JobRecord, utc_now_iso
 
-# Resolution ladder optimized for RTX 4050 (6 GB VRAM), starting at 512x768 (batch=1)
+# Resolution ladder optimized for RTX 4050 (6 GB VRAM), starting at 512x896 (batch=1) with automatic fallback to 512x768
 VRAM_SAFE_RESOLUTIONS: tuple[tuple[int, int], ...] = (
+    (512, 896),
     (512, 768),
     (448, 672),
     (384, 576),
@@ -37,6 +38,25 @@ class DarkStylePresetConfig(BaseModel):
 
 
 STYLE_PRESETS: dict[StylePresetChoice, DarkStylePresetConfig] = {
+    StylePresetChoice.DARK_CINEMATIC_2D: DarkStylePresetConfig(
+        preset_id=StylePresetChoice.DARK_CINEMATIC_2D,
+        positive_prefix=(
+            "(dark 2d graphic novel animation:1.25), (bold black ink outlines, flat cel-shaded surfaces:1.25), "
+            "clean 2d linework, simplified geometric shapes"
+        ),
+        positive_suffix=(
+            "dramatic slate-teal and warm amber noir lighting, clean silhouette separation, "
+            "limited color palette, cinematic 2d composition, high contrast mobile readability, "
+            "full bleed vertical 9:16 frame, non-photorealistic 2d drawn art"
+        ),
+        negative_prompt=(
+            "photorealistic, photograph, raw photo, live action, 3d render, cgi, blender, octane render, "
+            "smooth 3d shading, soft airbrush, heavy crosshatching, messy sketch lines, scratchy hatching, "
+            "charcoal smudge, white border, paper margin, picture frame, canvas border, bright daylight, "
+            "sunny, cluttered background, watermark, text, logo, signature, blurry, low quality, "
+            "deformed hands, extra fingers, extra limbs, bad anatomy, cropped"
+        ),
+    ),
     StylePresetChoice.INKED_GRAPHIC_NOVEL: DarkStylePresetConfig(
         preset_id=StylePresetChoice.INKED_GRAPHIC_NOVEL,
         positive_prefix=(
@@ -88,7 +108,7 @@ STYLE_PRESETS: dict[StylePresetChoice, DarkStylePresetConfig] = {
 }
 
 DEFAULT_DARK_2D_NEGATIVE_PROMPT = STYLE_PRESETS[
-    StylePresetChoice.INKED_GRAPHIC_NOVEL
+    StylePresetChoice.DARK_CINEMATIC_2D
 ].negative_prompt
 
 # Forbidden phrases to prevent living-artist imitation or copyrighted character/IP styles
@@ -142,7 +162,11 @@ class ImageGenerationRequest(BaseModel):
     scene_id: str | None = None
     scene_index: int = Field(default=0, ge=0)
     visual_prompt: str
-    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL
+    primary_subject: str | None = None
+    setting: str | None = None
+    time_of_day: str | None = None
+    key_objects: list[str] = Field(default_factory=list)
+    style_preset: StylePresetChoice = StylePresetChoice.DARK_CINEMATIC_2D
     negative_prompt: str | None = None
     checkpoint_name: str | None = None
     license_id: str = "other"
@@ -165,7 +189,7 @@ class ImageGenerationRequest(BaseModel):
     )
     seed: int = Field(default=42, ge=0)
     width: int = Field(default=512, ge=256, le=1024)
-    height: int = Field(default=768, ge=256, le=1024)
+    height: int = Field(default=896, ge=256, le=1024)
     steps: int = Field(default=24, ge=1, le=50)
     cfg: float = Field(default=7.0, ge=1.0, le=20.0)
     sampler_name: str = "euler"
@@ -208,12 +232,49 @@ def validate_prompt_style_policy(prompt: str) -> str:
     return cleaned
 
 
+def prioritize_narrative_elements(
+    scene_description: str,
+    *,
+    primary_subject: str | None = None,
+    setting: str | None = None,
+    time_of_day: str | None = None,
+    key_objects: list[str] | None = None,
+) -> str:
+    """Order primary subject, setting, time of day, and key narrative objects ahead of secondary details."""
+    clauses: list[str] = []
+    if primary_subject and primary_subject.strip():
+        clauses.append(f"({primary_subject.strip()}:1.15)")
+    if setting and setting.strip():
+        clauses.append(setting.strip())
+    if time_of_day and time_of_day.strip():
+        clauses.append(time_of_day.strip())
+    if key_objects:
+        cleaned_objs = [obj.strip() for obj in key_objects if obj.strip()]
+        if cleaned_objs:
+            clauses.append(", ".join(f"({obj}:1.15)" for obj in cleaned_objs))
+    if scene_description.strip():
+        clauses.append(scene_description.strip())
+    return ", ".join(clauses)
+
+
 def compose_dark_2d_prompt(
     scene_description: str,
-    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL,
+    style_preset: StylePresetChoice = StylePresetChoice.DARK_CINEMATIC_2D,
+    *,
+    primary_subject: str | None = None,
+    setting: str | None = None,
+    time_of_day: str | None = None,
+    key_objects: list[str] | None = None,
 ) -> str:
-    """Validate scene description and place style-defining tokens at the beginning of the prompt."""
-    validated = validate_prompt_style_policy(scene_description)
+    """Validate scene description and place concise style prefix + prioritized narrative ahead of atmospheric suffix."""
+    narrative_core = prioritize_narrative_elements(
+        scene_description,
+        primary_subject=primary_subject,
+        setting=setting,
+        time_of_day=time_of_day,
+        key_objects=key_objects,
+    )
+    validated = validate_prompt_style_policy(narrative_core)
     preset_cfg = STYLE_PRESETS[style_preset]
     if validated.lower().startswith(preset_cfg.positive_prefix.lower()):
         return validated
@@ -221,7 +282,7 @@ def compose_dark_2d_prompt(
 
 
 def resolve_negative_prompt(
-    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL,
+    style_preset: StylePresetChoice = StylePresetChoice.DARK_CINEMATIC_2D,
     custom_negative_prompt: str | None = None,
 ) -> str:
     """Return preset negative prompt unless overridden."""
@@ -234,11 +295,11 @@ def build_sd15_txt2img_workflow(
     *,
     checkpoint_name: str,
     positive_prompt: str,
-    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL,
+    style_preset: StylePresetChoice = StylePresetChoice.DARK_CINEMATIC_2D,
     negative_prompt: str | None = None,
     seed: int = 42,
     width: int = 512,
-    height: int = 768,
+    height: int = 896,
     steps: int = 24,
     cfg: float = 7.0,
     sampler_name: str = "euler",
@@ -619,7 +680,12 @@ class LocalImageGenerator:
     ) -> ImageGenerationResult:
         """Generate a vertical dark 2D scene image with GPU locking and automatic OOM fallback."""
         styled_prompt = compose_dark_2d_prompt(
-            request.visual_prompt, style_preset=request.style_preset
+            request.visual_prompt,
+            style_preset=request.style_preset,
+            primary_subject=request.primary_subject,
+            setting=request.setting,
+            time_of_day=request.time_of_day,
+            key_objects=request.key_objects,
         )
         effective_negative = resolve_negative_prompt(
             request.style_preset, request.negative_prompt
@@ -651,7 +717,7 @@ class LocalImageGenerator:
             for attempt_idx, (width, height) in enumerate(ladder):
                 workflow = build_sd15_txt2img_workflow(
                     checkpoint_name=ckpt,
-                    positive_prompt=request.visual_prompt,
+                    positive_prompt=styled_prompt,
                     style_preset=request.style_preset,
                     negative_prompt=effective_negative,
                     seed=request.seed,

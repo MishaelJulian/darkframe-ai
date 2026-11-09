@@ -21,6 +21,7 @@ class LLMProviderChoice(StrEnum):
 class StylePresetChoice(StrEnum):
     """Configurable dark 2D visual style presets."""
 
+    DARK_CINEMATIC_2D = "DARK_CINEMATIC_2D"
     INKED_GRAPHIC_NOVEL = "INKED_GRAPHIC_NOVEL"
     ILLUSTRATED_NOIR = "ILLUSTRATED_NOIR"
     DARK_2D_ANIMATION = "DARK_2D_ANIMATION"
@@ -72,10 +73,10 @@ class Settings(BaseSettings):
         "C:/Users/misha/AppData/Local/Comfy-Desktop/ComfyUI-Shared/models"
     )
     comfyui_default_width: int = Field(default=512, ge=256, le=1024)
-    comfyui_default_height: int = Field(default=768, ge=256, le=1024)
+    comfyui_default_height: int = Field(default=896, ge=256, le=1024)
     comfyui_steps: int = Field(default=24, ge=1, le=50)
     comfyui_batch_size: int = Field(default=1, ge=1, le=1)
-    default_style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL
+    default_style_preset: StylePresetChoice = StylePresetChoice.DARK_CINEMATIC_2D
 
     # Local Voiceover & FFmpeg Settings
     tts_engine: Literal["piper", "pyttsx3"] = "piper"

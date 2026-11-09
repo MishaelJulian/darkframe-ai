@@ -92,17 +92,21 @@ def build_parser() -> argparse.ArgumentParser:
         "generate", help="Generate a dark 2D vertical scene illustration via ComfyUI"
     )
     gen_p.add_argument("--prompt", type=str, required=True)
+    gen_p.add_argument("--subject", type=str, default=None)
+    gen_p.add_argument("--setting", type=str, default=None)
+    gen_p.add_argument("--time-of-day", type=str, default=None)
+    gen_p.add_argument("--key-object", action="append", default=[])
     gen_p.add_argument("--episode-id", type=str, default="ep_m2_proof")
     gen_p.add_argument("--scene-index", type=int, default=0)
     gen_p.add_argument("--seed", type=int, default=42)
     gen_p.add_argument("--width", type=int, default=512)
-    gen_p.add_argument("--height", type=int, default=768)
+    gen_p.add_argument("--height", type=int, default=896)
     gen_p.add_argument("--steps", type=int, default=24)
     gen_p.add_argument(
         "--style-preset",
         type=StylePresetChoice,
         choices=list(StylePresetChoice),
-        default=StylePresetChoice.INKED_GRAPHIC_NOVEL,
+        default=StylePresetChoice.DARK_CINEMATIC_2D,
     )
     gen_p.add_argument("--checkpoint", type=str, default=None)
     gen_p.add_argument("--license-id", type=str, default="other")
@@ -225,6 +229,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 episode_id=args.episode_id,
                 scene_index=args.scene_index,
                 visual_prompt=args.prompt,
+                primary_subject=args.subject,
+                setting=args.setting,
+                time_of_day=args.time_of_day,
+                key_objects=args.key_object or [],
                 style_preset=args.style_preset,
                 checkpoint_name=args.checkpoint,
                 license_id=args.license_id,
