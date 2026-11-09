@@ -1,0 +1,74 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+*secret*.json
+*token*.json
+
+# SQLite Databases & WAL files
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+data/
+
+# Generated Media, Prompts & Artifacts
+output/
+renders/
+artifacts/
+prompts_io/
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.ass
+*.srt
+
+# AI Model Weights & Checkpoints
+models/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.gguf
+
+# Python Bytecode, Venv & Tool Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# OS & Temp Files
+.DS_Store
+Thumbs.db
+tmp/
+temp/
+*.tmp
+*.log
+*.bak
