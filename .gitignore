@@ -38,8 +38,9 @@ prompts_io/
 *.ass
 *.srt
 
-# AI Model Weights & Checkpoints
+# AI Model Weights, Local Tools & Checkpoints
 models/
+tools/
 *.safetensors
 *.ckpt
 *.pt
@@ -47,6 +48,9 @@ models/
 *.bin
 *.onnx
 *.gguf
+*.zip
+*.exe
+*.dll
 
 # Python Bytecode, Venv & Tool Caches
 __pycache__/
