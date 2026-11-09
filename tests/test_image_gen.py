@@ -225,7 +225,15 @@ def test_successful_image_generation_and_sqlite_persistence(tmp_path: Path) -> N
     assets = db.list_assets("ep_01")
     assert len(assets) == 1
     assert assets[0].sha256_checksum == result.sha256_checksum
-    assert assets[0].license_id == "creativeml-openrail-m"
+    assert assets[0].license_id == "other"
+    assert assets[0].metadata_json is not None
+    assert assets[0].metadata_json["base_model_license"] == "creativeml-openrail-m"
+    assert assets[0].metadata_json["commercial_use_permissions"] == [
+        "Image",
+        "RentCivit",
+        "Rent",
+    ]
+    assert assets[0].metadata_json["allow_no_credit"] is True
 
 
 def test_cuda_oom_triggers_vram_free_and_resolution_step_down(tmp_path: Path) -> None:

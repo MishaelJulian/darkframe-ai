@@ -88,8 +88,24 @@ class ImageGenerationRequest(BaseModel):
     visual_prompt: str
     negative_prompt: str = DEFAULT_DARK_2D_NEGATIVE_PROMPT
     checkpoint_name: str | None = None
-    license_id: str = "creativeml-openrail-m"
-    rights_provenance: str = "Local ComfyUI SD 1.5 generation (commercial permitted)"
+    license_id: str = "other"
+    base_model_license: str = "creativeml-openrail-m"
+    commercial_use_permissions: list[str] = Field(
+        default_factory=lambda: ["Image", "RentCivit", "Rent"]
+    )
+    allow_no_credit: bool = True
+    license_source_urls: list[str] = Field(
+        default_factory=lambda: [
+            "https://huggingface.co/Lykon/DreamShaper",
+            "https://civitai.com/models/4384/dreamshaper",
+            "https://civitai.com/api/v1/models/4384",
+        ]
+    )
+    license_verified_at: str = "2026-11-09"
+    rights_provenance: str = (
+        "Local ComfyUI generation; commercial use of generated images permitted "
+        "per Civitai allowCommercialUse=['Image'] (model ID 4384, v8)"
+    )
     seed: int = Field(default=42, ge=0)
     width: int = Field(default=512, ge=256, le=1024)
     height: int = Field(default=768, ge=256, le=1024)
@@ -605,6 +621,11 @@ class LocalImageGenerator:
                 "prompt_id": prompt_id,
                 "checkpoint_name": ckpt,
                 "license_id": request.license_id,
+                "base_model_license": request.base_model_license,
+                "commercial_use_permissions": request.commercial_use_permissions,
+                "allow_no_credit": request.allow_no_credit,
+                "license_source_urls": request.license_source_urls,
+                "license_verified_at": request.license_verified_at,
                 "rights_provenance": request.rights_provenance,
                 "positive_prompt": styled_prompt,
                 "negative_prompt": request.negative_prompt,

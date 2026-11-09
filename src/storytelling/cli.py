@@ -99,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     gen_p.add_argument("--height", type=int, default=768)
     gen_p.add_argument("--steps", type=int, default=24)
     gen_p.add_argument("--checkpoint", type=str, default=None)
-    gen_p.add_argument("--license-id", type=str, default="creativeml-openrail-m")
+    gen_p.add_argument("--license-id", type=str, default="other")
     gen_p.add_argument("--db-path", type=Path, default=None)
     gen_p.add_argument("--output-dir", type=Path, default=None)
 
