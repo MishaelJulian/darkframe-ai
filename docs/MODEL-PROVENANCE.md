@@ -28,3 +28,9 @@
 | `allow_derivatives` | `true` | `https://civitai.com/api/v1/models/4384` (`allowDerivatives`) |
 | `prohibited_commercial_uses` | Selling the model weights or merged checkpoint files directly (`"Sell"` is omitted from `allowCommercialUse`) | `https://civitai.com/api/v1/models/4384` |
 | `ethical_use_restrictions` | Attachment A of CreativeML Open RAIL-M (no illegal content, no defamation/harassment of real individuals, no impersonation or deceptive factual fabrication) | CreativeML Open RAIL-M |
+
+### Runtime & Hardware Verification (RTX 4050 6 GB VRAM)
+- **Verified Local Launch Flags:** `--listen 127.0.0.1 --port 8188 --disable-auto-launch --disable-dynamic-vram`
+- **Observed Generation Time (`512x768`, `batch_size=1`, `24` steps, `euler`/`normal`):** `11.58s` (cold model load included)
+- **Observed GPU Memory (`nvidia-smi`):** `1,446 MiB` pre-generation → `3,462 MiB` post-generation (`2,459 MiB` free headroom out of `6,141 MiB` total VRAM; `torch_vram_total`: `2.00 GiB`, zero OOM)
+
