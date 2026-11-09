@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from storytelling.config import Settings
+from storytelling.config import Settings, StylePresetChoice
 from storytelling.db import DatabaseManager
 from storytelling.models import AssetRecord, AssetType, JobRecord, utc_now_iso
 
@@ -24,16 +24,68 @@ VRAM_SAFE_RESOLUTIONS: tuple[tuple[int, int], ...] = (
     (384, 576),
 )
 
-DEFAULT_DARK_2D_STYLE_SUFFIX = (
-    "dark 2d graphic novel illustration, chiaroscuro ink shadows, "
-    "muted slate teal and amber lighting, atmospheric fog, clean dramatic linework, "
-    "moody suspenseful composition, vertical 9:16 framing, original artwork"
-)
 
-DEFAULT_DARK_2D_NEGATIVE_PROMPT = (
-    "photorealistic, 3d render, anime, bright neon, oversaturated, watermark, "
-    "text, logo, signature, blurry, low quality, deformed hands, extra limbs, cropped"
-)
+class DarkStylePresetConfig(BaseModel):
+    """Configuration for a specific dark 2D visual style preset."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    preset_id: StylePresetChoice
+    positive_prefix: str
+    positive_suffix: str
+    negative_prompt: str
+
+
+STYLE_PRESETS: dict[StylePresetChoice, DarkStylePresetConfig] = {
+    StylePresetChoice.INKED_GRAPHIC_NOVEL: DarkStylePresetConfig(
+        preset_id=StylePresetChoice.INKED_GRAPHIC_NOVEL,
+        positive_prefix=(
+            "(2d graphic novel illustration:1.25), (bold black ink outlines, strong cel shading:1.2), "
+            "comic book ink linework, limited muted color palette, simplified geometric shapes, "
+            "dramatic comic-book chiaroscuro shadows, flat color fills"
+        ),
+        positive_suffix="hand-inked 2d comic panel, non-photorealistic, original 2d illustration",
+        negative_prompt=(
+            "photorealistic, photograph, photo, 3d render, cgi, unreal engine, octane render, "
+            "camera lens, depth of field, bokeh, soft airbrush, smooth 3d shading, bright neon, "
+            "oversaturated, watermark, text, logo, signature, blurry, low quality, deformed hands, "
+            "extra limbs, cropped"
+        ),
+    ),
+    StylePresetChoice.ILLUSTRATED_NOIR: DarkStylePresetConfig(
+        preset_id=StylePresetChoice.ILLUSTRATED_NOIR,
+        positive_prefix=(
+            "(hand-drawn noir illustration:1.25), (textured ink and charcoal shadows:1.2), "
+            "stylized mystery book illustration, muted slate teal and amber palette, "
+            "stylized hand-painted background, visible pen and crosshatching strokes, "
+            "cinematic noir composition"
+        ),
+        positive_suffix="stylized 2d noir artwork, non-photorealistic, original hand-drawn illustration",
+        negative_prompt=(
+            "photorealistic, photograph, raw photo, dslr, 3d render, cgi, glossy plastic, "
+            "anime, bright neon, oversaturated, watermark, text, logo, signature, blurry, "
+            "low quality, deformed hands, extra limbs, cropped"
+        ),
+    ),
+    StylePresetChoice.DARK_2D_ANIMATION: DarkStylePresetConfig(
+        preset_id=StylePresetChoice.DARK_2D_ANIMATION,
+        positive_prefix=(
+            "(flat-shaded 2d animated film frame:1.25), (2d hand-drawn animation cel:1.2), "
+            "simplified stylized shapes, clear dark silhouettes, clean 2d linework, "
+            "atmospheric rim lighting, matte painted 2d background, dark animated thriller aesthetic"
+        ),
+        positive_suffix="2d animation cel shading, non-photorealistic, original 2d animated art",
+        negative_prompt=(
+            "photorealistic, photograph, live action, 3d render, cgi, pixar, blender, "
+            "oil painting impastos, heavy sketch crosshatching, bright neon, watermark, "
+            "text, logo, signature, blurry, low quality, deformed hands, extra limbs, cropped"
+        ),
+    ),
+}
+
+DEFAULT_DARK_2D_NEGATIVE_PROMPT = STYLE_PRESETS[
+    StylePresetChoice.INKED_GRAPHIC_NOVEL
+].negative_prompt
 
 # Forbidden phrases to prevent living-artist imitation or copyrighted character/IP styles
 FORBIDDEN_STYLE_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -86,7 +138,8 @@ class ImageGenerationRequest(BaseModel):
     scene_id: str | None = None
     scene_index: int = Field(default=0, ge=0)
     visual_prompt: str
-    negative_prompt: str = DEFAULT_DARK_2D_NEGATIVE_PROMPT
+    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL
+    negative_prompt: str | None = None
     checkpoint_name: str | None = None
     license_id: str = "other"
     base_model_license: str = "creativeml-openrail-m"
@@ -122,6 +175,7 @@ class ImageGenerationResult(BaseModel):
 
     asset_id: str
     job_key: str
+    style_preset: StylePresetChoice
     image_path: Path
     manifest_path: Path
     sha256_checksum: str
@@ -150,19 +204,34 @@ def validate_prompt_style_policy(prompt: str) -> str:
     return cleaned
 
 
-def compose_dark_2d_prompt(scene_description: str) -> str:
-    """Validate scene description and append consistent dark 2D mystery style tokens."""
+def compose_dark_2d_prompt(
+    scene_description: str,
+    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL,
+) -> str:
+    """Validate scene description and place style-defining tokens at the beginning of the prompt."""
     validated = validate_prompt_style_policy(scene_description)
-    if DEFAULT_DARK_2D_STYLE_SUFFIX.lower() in validated.lower():
+    preset_cfg = STYLE_PRESETS[style_preset]
+    if validated.lower().startswith(preset_cfg.positive_prefix.lower()):
         return validated
-    return f"{validated}, {DEFAULT_DARK_2D_STYLE_SUFFIX}"
+    return f"{preset_cfg.positive_prefix}, {validated}, {preset_cfg.positive_suffix}"
+
+
+def resolve_negative_prompt(
+    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL,
+    custom_negative_prompt: str | None = None,
+) -> str:
+    """Return preset negative prompt unless overridden."""
+    if custom_negative_prompt is not None and custom_negative_prompt.strip():
+        return custom_negative_prompt.strip()
+    return STYLE_PRESETS[style_preset].negative_prompt
 
 
 def build_sd15_txt2img_workflow(
     *,
     checkpoint_name: str,
     positive_prompt: str,
-    negative_prompt: str = DEFAULT_DARK_2D_NEGATIVE_PROMPT,
+    style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL,
+    negative_prompt: str | None = None,
     seed: int = 42,
     width: int = 512,
     height: int = 768,
@@ -173,7 +242,8 @@ def build_sd15_txt2img_workflow(
     filename_prefix: str = "darkframe_scene",
 ) -> dict[str, Any]:
     """Build a deterministic ComfyUI API prompt workflow for SD 1.5 (batch size = 1)."""
-    styled_positive = compose_dark_2d_prompt(positive_prompt)
+    styled_positive = compose_dark_2d_prompt(positive_prompt, style_preset=style_preset)
+    effective_negative = resolve_negative_prompt(style_preset, negative_prompt)
     return {
         "3": {
             "class_type": "KSampler",
@@ -215,7 +285,7 @@ def build_sd15_txt2img_workflow(
             "class_type": "CLIPTextEncode",
             "inputs": {
                 "clip": ["4", 1],
-                "text": negative_prompt,
+                "text": effective_negative,
             },
         },
         "8": {
@@ -544,11 +614,16 @@ class LocalImageGenerator:
         self, request: ImageGenerationRequest, output_dir: Path | None = None
     ) -> ImageGenerationResult:
         """Generate a vertical dark 2D scene image with GPU locking and automatic OOM fallback."""
-        # Validate style policy before touching GPU or API
-        styled_prompt = compose_dark_2d_prompt(request.visual_prompt)
+        styled_prompt = compose_dark_2d_prompt(
+            request.visual_prompt, style_preset=request.style_preset
+        )
+        effective_negative = resolve_negative_prompt(
+            request.style_preset, request.negative_prompt
+        )
 
         job_key = (
-            f"{request.episode_id}:image:scene_{request.scene_index:02d}:seed_{request.seed}"
+            f"{request.episode_id}:image:scene_{request.scene_index:02d}:"
+            f"{request.style_preset.value}:{request.width}x{request.height}:seed_{request.seed}"
         )
         job_id = f"job_{uuid.uuid4().hex[:12]}"
         self.db.register_job(
@@ -560,7 +635,6 @@ class LocalImageGenerator:
                 uses_gpu=True,
             )
         )
-        # Acquire single-GPU lock in SQLite
         self.db.start_job(job_key)
         start_time = time.monotonic()
 
@@ -573,8 +647,9 @@ class LocalImageGenerator:
             for attempt_idx, (width, height) in enumerate(ladder):
                 workflow = build_sd15_txt2img_workflow(
                     checkpoint_name=ckpt,
-                    positive_prompt=styled_prompt,
-                    negative_prompt=request.negative_prompt,
+                    positive_prompt=request.visual_prompt,
+                    style_preset=request.style_preset,
+                    negative_prompt=effective_negative,
                     seed=request.seed,
                     width=width,
                     height=height,
@@ -582,7 +657,10 @@ class LocalImageGenerator:
                     cfg=request.cfg,
                     sampler_name=request.sampler_name,
                     scheduler=request.scheduler,
-                    filename_prefix=f"{request.episode_id}_s{request.scene_index:02d}",
+                    filename_prefix=(
+                        f"{request.episode_id}_s{request.scene_index:02d}_"
+                        f"{request.style_preset.value.lower()}"
+                    ),
                 )
                 try:
                     prompt_id = self.client.submit_prompt(workflow)
@@ -605,7 +683,10 @@ class LocalImageGenerator:
 
             target_dir = (output_dir or self.settings.output_dir) / request.episode_id / "images"
             target_dir.mkdir(parents=True, exist_ok=True)
-            stem = f"scene_{request.scene_index:02d}_seed_{request.seed}"
+            stem = (
+                f"scene_{request.scene_index:02d}_{request.style_preset.value}_"
+                f"{width}x{height}_seed_{request.seed}"
+            )
             image_path = target_dir / f"{stem}.png"
             manifest_path = target_dir / f"{stem}.manifest.json"
 
@@ -618,6 +699,7 @@ class LocalImageGenerator:
                 "episode_id": request.episode_id,
                 "scene_id": request.scene_id,
                 "scene_index": request.scene_index,
+                "style_preset": request.style_preset.value,
                 "prompt_id": prompt_id,
                 "checkpoint_name": ckpt,
                 "license_id": request.license_id,
@@ -627,8 +709,9 @@ class LocalImageGenerator:
                 "license_source_urls": request.license_source_urls,
                 "license_verified_at": request.license_verified_at,
                 "rights_provenance": request.rights_provenance,
+                "raw_scene_prompt": request.visual_prompt,
                 "positive_prompt": styled_prompt,
-                "negative_prompt": request.negative_prompt,
+                "negative_prompt": effective_negative,
                 "seed": request.seed,
                 "requested_resolution": [request.width, request.height],
                 "actual_resolution": [width, height],
@@ -669,6 +752,7 @@ class LocalImageGenerator:
             return ImageGenerationResult(
                 asset_id=asset_id,
                 job_key=job_key,
+                style_preset=request.style_preset,
                 image_path=image_path,
                 manifest_path=manifest_path,
                 sha256_checksum=sha256_hex,

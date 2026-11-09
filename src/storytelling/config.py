@@ -18,6 +18,15 @@ class LLMProviderChoice(StrEnum):
     OLLAMA = "ollama"
 
 
+class StylePresetChoice(StrEnum):
+    """Configurable dark 2D visual style presets."""
+
+    INKED_GRAPHIC_NOVEL = "INKED_GRAPHIC_NOVEL"
+    ILLUSTRATED_NOIR = "ILLUSTRATED_NOIR"
+    DARK_2D_ANIMATION = "DARK_2D_ANIMATION"
+
+
+
 class ConfigurationError(ValueError):
     """Raised when configuration violates safety or budget guardrails."""
 
@@ -66,6 +75,7 @@ class Settings(BaseSettings):
     comfyui_default_height: int = Field(default=768, ge=256, le=1024)
     comfyui_steps: int = Field(default=24, ge=1, le=50)
     comfyui_batch_size: int = Field(default=1, ge=1, le=1)
+    default_style_preset: StylePresetChoice = StylePresetChoice.INKED_GRAPHIC_NOVEL
 
     # Local Voiceover & FFmpeg Settings
     tts_engine: Literal["piper", "pyttsx3"] = "piper"

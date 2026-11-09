@@ -8,9 +8,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from storytelling.config import Settings
+from storytelling.config import Settings, StylePresetChoice
 from storytelling.db import DatabaseManager, GPUConcurrencyError
 from storytelling.image_gen import (
+    STYLE_PRESETS,
     ComfyCheckpointMissingError,
     ComfyOOMError,
     ComfyResponseError,
@@ -21,6 +22,7 @@ from storytelling.image_gen import (
     LocalImageGenerator,
     StylePolicyViolationError,
     build_sd15_txt2img_workflow,
+    compose_dark_2d_prompt,
     validate_prompt_style_policy,
 )
 from storytelling.models import EpisodeRecord, JobRecord, JobStatus, StoryRecord
@@ -51,16 +53,29 @@ def _prepare_db_with_episode(tmp_path: Path, episode_id: str = "ep_01") -> Datab
 
 def test_workflow_builder_uses_512x768_batch1_and_dark_style() -> None:
     wf = build_sd15_txt2img_workflow(
-        checkpoint_name="v1-5-pruned-emaonly-fp16.safetensors",
+        checkpoint_name="DreamShaper_8_pruned.safetensors",
         positive_prompt="A lone lantern on a wet stone pier at midnight",
+        style_preset=StylePresetChoice.INKED_GRAPHIC_NOVEL,
         seed=101,
     )
-    assert wf["4"]["inputs"]["ckpt_name"] == "v1-5-pruned-emaonly-fp16.safetensors"
+    assert wf["4"]["inputs"]["ckpt_name"] == "DreamShaper_8_pruned.safetensors"
     assert wf["5"]["inputs"]["width"] == 512
     assert wf["5"]["inputs"]["height"] == 768
     assert wf["5"]["inputs"]["batch_size"] == 1
     assert wf["3"]["inputs"]["seed"] == 101
-    assert "dark 2d graphic novel illustration" in wf["6"]["inputs"]["text"]
+    pos_text = wf["6"]["inputs"]["text"]
+    assert pos_text.startswith("(2d graphic novel illustration:1.25)")
+    assert "A lone lantern on a wet stone pier at midnight" in pos_text
+
+
+def test_all_three_style_presets_place_tokens_at_beginning() -> None:
+    scene = "An overturned chair in a lighthouse dining room"
+    for preset in StylePresetChoice:
+        composed = compose_dark_2d_prompt(scene, style_preset=preset)
+        expected_prefix = STYLE_PRESETS[preset].positive_prefix
+        assert composed.startswith(expected_prefix)
+        assert scene in composed
+
 
 
 def test_style_policy_blocks_living_artists_and_copyrighted_ip() -> None:

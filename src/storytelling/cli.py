@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from storytelling.config import Settings, load_settings
+from storytelling.config import Settings, StylePresetChoice, load_settings
 from storytelling.db import REQUIRED_TABLES, DatabaseManager
 from storytelling.image_gen import (
     ComfyUIError,
@@ -98,6 +98,12 @@ def build_parser() -> argparse.ArgumentParser:
     gen_p.add_argument("--width", type=int, default=512)
     gen_p.add_argument("--height", type=int, default=768)
     gen_p.add_argument("--steps", type=int, default=24)
+    gen_p.add_argument(
+        "--style-preset",
+        type=StylePresetChoice,
+        choices=list(StylePresetChoice),
+        default=StylePresetChoice.INKED_GRAPHIC_NOVEL,
+    )
     gen_p.add_argument("--checkpoint", type=str, default=None)
     gen_p.add_argument("--license-id", type=str, default="other")
     gen_p.add_argument("--db-path", type=Path, default=None)
@@ -219,6 +225,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 episode_id=args.episode_id,
                 scene_index=args.scene_index,
                 visual_prompt=args.prompt,
+                style_preset=args.style_preset,
                 checkpoint_name=args.checkpoint,
                 license_id=args.license_id,
                 seed=args.seed,
