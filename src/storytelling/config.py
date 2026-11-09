@@ -80,8 +80,8 @@ class Settings(BaseSettings):
 
     # Local Voiceover & FFmpeg Settings
     tts_engine: Literal["piper", "pyttsx3"] = "piper"
-    piper_executable: str = "piper"
-    piper_model_path: Path | None = None
+    piper_executable: str = "tools/piper/piper/piper.exe"
+    piper_model_path: Path | None = Path("models/piper/en_US-norman-medium.onnx")
     ffmpeg_executable: str = "ffmpeg"
     ffprobe_executable: str = "ffprobe"
 

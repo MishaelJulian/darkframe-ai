@@ -34,7 +34,11 @@ def run_doctor(settings: Settings) -> dict[str, object]:
     """Perform a non-destructive environment and configuration check."""
     ffmpeg_path = shutil.which(settings.ffmpeg_executable)
     ffprobe_path = shutil.which(settings.ffprobe_executable)
-    piper_path = shutil.which(settings.piper_executable)
+    piper_path = shutil.which(settings.piper_executable) or (
+        str(Path(settings.piper_executable))
+        if Path(settings.piper_executable).exists()
+        else None
+    )
     models_dir = settings.comfyui_shared_models_dir / "checkpoints"
     checkpoints = (
         [
@@ -149,6 +153,13 @@ def build_parser() -> argparse.ArgumentParser:
     poc_p.add_argument("--upscale-factor", type=int, choices=[1, 2], default=1)
     poc_p.add_argument(
         "--output-filename", type=str, default="poc_1080x1920_upscale1x.mp4"
+    )
+    poc_p.add_argument(
+        "--tts-engine",
+        type=str,
+        choices=["piper", "pyttsx3"],
+        default=None,
+        help="Override TTS engine (default: settings.tts_engine='piper' with SAPI5 fallback)",
     )
     poc_p.add_argument("--db-path", type=Path, default=None)
     poc_p.add_argument("--output-dir", type=Path, default=None)
@@ -332,7 +343,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
             ]
 
-            vo_gen = VoiceoverGenerator(settings=settings, db=db)
+            effective_settings = (
+                settings.model_copy(update={"tts_engine": args.tts_engine})
+                if args.tts_engine
+                else settings
+            )
+            vo_gen = VoiceoverGenerator(settings=effective_settings, db=db)
             vo_result = vo_gen.generate_episode_voiceover(
                 episode_id=args.episode_id,
                 segments=segments_in,

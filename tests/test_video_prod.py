@@ -103,6 +103,34 @@ def test_piper_provider_availability_check(tmp_path: Path) -> None:
     with pytest.raises(TTSError, match="not installed"):
         provider.synthesize_to_wav("Hello world", tmp_path / "out.wav")
 
+    # Even if executable and .onnx exist, missing .onnx.json must report unavailable
+    fake_exe = tmp_path / "piper.exe"
+    fake_onnx = tmp_path / "voice.onnx"
+    fake_exe.write_bytes(b"exe")
+    fake_onnx.write_bytes(b"onnx")
+    provider_no_json = PiperOfflineProvider(
+        piper_executable=fake_exe,
+        model_path=fake_onnx,
+    )
+    assert not provider_no_json.is_available()
+
+    fake_json = tmp_path / "voice.onnx.json"
+    fake_json.write_text("{}", encoding="utf-8")
+    assert provider_no_json.is_available()
+
+
+def test_normalize_audio_peaks_distinguishes_peak_norm_from_clipping() -> None:
+    # Single sample at 0.99997 (like Piper's int16 peak normalization) is not flat-top clipping
+    clean = np.array([0.0, 0.5, 0.99997, -0.4, 0.0], dtype=np.float32)
+    norm, peak, clipped = normalize_audio_peaks(clean, target_peak_db=-1.5)
+    assert not clipped
+    assert 0.84 <= peak <= 0.85
+
+    # Flat-top rail saturation (>8 samples at >= 0.9999) is flagged as clipping
+    saturated = np.ones(16, dtype=np.float32)
+    _, _, clipped_sat = normalize_audio_peaks(saturated, target_peak_db=-1.5)
+    assert clipped_sat
+
 
 def test_voiceover_generator_segmented_timing_and_db_records(tmp_path: Path) -> None:
     db = DatabaseManager(tmp_path / "test.db")

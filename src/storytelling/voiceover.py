@@ -133,12 +133,13 @@ class PiperOfflineProvider(TTSProvider):
         self,
         piper_executable: str | Path,
         model_path: Path,
-        license_id: str = "cc0-1.0",
-        rights_provenance: str = "Offline Piper ONNX voice model",
+        license_id: str = "public-domain",
+        rights_provenance: str = "Offline Piper ONNX voice model (Public Domain model & LibriVox dataset; MIT engine)",
         length_scale: float = 1.08,
     ) -> None:
         self.piper_executable = str(piper_executable)
         self.model_path = Path(model_path)
+        self.config_path = Path(f"{self.model_path}.json")
         self.voice_id = self.model_path.stem
         self.license_id = license_id
         self.rights_provenance = rights_provenance
@@ -148,7 +149,7 @@ class PiperOfflineProvider(TTSProvider):
         exe_ok = bool(
             shutil.which(self.piper_executable) or Path(self.piper_executable).exists()
         )
-        return exe_ok and self.model_path.exists()
+        return exe_ok and self.model_path.exists() and self.config_path.exists()
 
     def synthesize_to_wav(self, text: str, output_wav: Path) -> None:
         cleaned = text.strip()
@@ -221,14 +222,18 @@ def normalize_audio_peaks(
 ) -> tuple[np.ndarray, float, bool]:
     """Normalize audio to `target_peak_db` below full scale and report peak/clipping."""
     raw_peak = float(np.max(np.abs(samples))) if len(samples) > 0 else 0.0
-    clipping_detected = raw_peak > 0.999
+    # Piper peak-normalizes each segment so exactly 1 sample per segment reaches 32767/32768 (0.99997).
+    # True clipping is flat-top saturation (>8 samples at the int16 rail) or post-normalization > 0.999.
+    saturated_samples = int(np.sum(np.abs(samples) >= 0.9999)) if len(samples) > 0 else 0
     if raw_peak > 1e-6:
         target_linear = float(10.0 ** (target_peak_db / 20.0))
         scaled = (samples / raw_peak) * target_linear
     else:
         scaled = samples
-    final_peak = float(np.max(np.abs(scaled))) if len(scaled) > 0 else 0.0
-    return np.clip(scaled, -1.0, 1.0).astype(np.float32), final_peak, clipping_detected
+    clipped_out = np.clip(scaled, -1.0, 1.0).astype(np.float32)
+    final_peak = float(np.max(np.abs(clipped_out))) if len(clipped_out) > 0 else 0.0
+    clipping_detected = saturated_samples > 8 or final_peak > 0.999
+    return clipped_out, final_peak, clipping_detected
 
 
 class VoiceoverGenerator:
